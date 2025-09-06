@@ -1,0 +1,25 @@
+/*
+  qtest. A very simple testing framework. We usually use
+  the stock Maxima test framework. But, this is useful sometimes.
+*/
+
+/* reset these counters when running a set of tests */
+qtest_count : 0;
+qtest_scount : 0;
+
+qtest('expr,val) := block([display2d:display2d,savedis,rval],
+  qtest_count :   qtest_count + 1, 
+  savedis : display2d,
+  display2d:false,
+  print(string(expr)),
+  display2d:savedis,
+  rval : ev(expr),
+  if  rval = val then (
+   print(" succeeded: returned ",rval),
+   qtest_scount :  qtest_scount + 1 )
+  else
+   print(" failed: returned ",rval)
+  );
+
+qtest_result() :=
+  print( qtest_scount, "/", qtest_count , " succeeded");

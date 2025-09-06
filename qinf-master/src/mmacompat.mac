@@ -1,0 +1,112 @@
+/*
+ * Mathematica compatibility functions.
+ * These reproduce some of the features of some Mma functions.
+ * Only the compatibility functions used in qinf.mac are included
+ * here. There are additional compatibility functions i mmacompat_extra.mac
+ *
+ * rtest_mmacompat.mac gives examples of features that are implemented
+ * and mentions some that are not.
+ *
+ * rtest3_mmacompat.mac has a few efficiency tests
+ */
+
+/*============== Partition ===============*/
+/* Like Mma's Partition function
+   currently treats overhanging differently.
+   Partition(x,n) partitions list x into n lists
+   Partition(x,n,d) does the same with offset d
+   Partition([a,b,c,d,e,f],2);
+    --> [[a,b],[c,d],[e,f]]
+   Partition([a,b,c,d,e,f],2,1);
+    --> [[a,b],[b,c],[c,d],[d,e],[e,f]]
+*/
+/* not named partition because that is already taken in Maxima. */
+/* compiling, with modedeclare, makes code slower, by a factor of two
+  or more gcl */
+Partition(x,n,[id]) := block([d:0,j,len:length(x),res:[]],
+  modedeclare([d,i,j,n,len],fixnum), /* does not seem to do much */
+  if length(id) = 1 then d : id[1],
+  if length(x) <= n   then [] else
+  for i:1 thru len step n-d do (
+    j:i+n-1,
+    if j>len then return(res) else
+    res:cons(Take(x,[i,j]),res)),reverse(res));
+
+/************** end Partition **************/
+
+
+/*============== Take  ===============*/
+
+/*
+ * Take(list,n) -- returns the first n elements of list
+ *             if n>0 and the last |n| elements if n<0.
+ * Take(list,[n1,n2]) returns elements n1 through n2.
+ * Take(list,[n1,n2,skip]) returns elements n1 through n2, skipping by skip.
+ * Take(list,seq1,seq2,...) for nested lists, seq1 operates at level 1, seq2
+ *     at level2, etc., where seqn is of the same form and meaning as the arguments
+ *     given in the case of one level.
+ * just as with n, n1 and n2 count from the end if they are negative.
+ * Take(list,[-1,1,-1]) --> reverse(list)
+ */
+
+/* '%Take' operates on top level, it is called via recursion from 'Take' */
+%Take(list,[v]) := block([len:length(list),i1,i2],
+  if not listp(v[1]) then if v[1] >=0 then rest(list,v[1]-len)
+    else rest(list,len+v[1])
+    else (
+      if v[1][1] > 0 then i1:v[1][1] else i1:len+v[1][1]+1,
+      if v[1][2] > 0 then i2:v[1][2] else i2:len+v[1][2]+1,
+      if length(v[1]) = 2 then rest(rest(list,i1-1),-len+i2)
+    else create_list(inpart(list,i1+v[1][3]*i),i,0,intdiv((i2-i1),v[1][3]))));
+
+Take(list,[v]) := block([res:[]],
+  if length(v) = 1 then %Take(list,v[1]) else (
+  res:%Take(list,v[1]),
+  v:rest(v,1),
+  res:map(lambda([x],apply('Take,cons(x,v))),res),
+  res));
+
+/************** end Take  **************/
+
+/***/
+/*============== Most  ===============*/
+Most(v) := rest(v,-1);
+
+
+/*==============  Transpose   ===============*/
+
+Transpose(m) :=  mma_mat_trans('transpose,m);
+
+/*==============  Length  ===============*/
+/* This one can probably not be faithful to Mma, because of
+   the different way that its possible arguments are represented
+   in the two systems. Eg. Length(Sqrt(2)) disagrees and I don't
+   see a way or reason to force agreement.
+*/
+Length(x) := if atom(x) or numberp(x) or complexp(x) then 0   else length(x);
+
+
+/**********************************************************
+ * Following are not Mma functions, but rather helper functions.
+ **********************************************************/
+
+/* integer division discarding remainder.
+   This must be possible more easily somehow, but this
+   works here
+*/
+intdiv(a,b) := a/b-mod(a,b)/b;
+
+/* suggested by Barton Willis */
+mat_to_list(x) := if matrixp(x) then args(x) else x;
+
+/* convert list to matrix or fall through */
+ensuremat(m) := if matrixp(m) then m else apply('matrix,m);
+/* convert  matrix to list or fall through */
+ensurelist(m) := if matrixp(m) then args(m) else m;
+
+/* For function that takes a matrix and returns a matrix.
+   f%%% is the Maxima function name, m the matrix.
+   Return same matrix type as input.
+*/
+mma_mat_trans(f%%%,m) :=  if matrixp(m) then f%%%(m)
+   else  mat_to_list(f%%%(apply('matrix,m)));
