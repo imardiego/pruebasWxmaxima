@@ -1,0 +1,13 @@
+/* mi_script.mac */
+
+/* Definimos una función cuadrática */
+f(x) := x^2 + 3*x + 2;
+
+/* Otra función: derivada de f */
+df(x) := diff(f(x), x);
+
+/* Una integral simbólica */
+integral_sin(x) := integrate(sin(x), x);
+
+/* Definimos una constante */
+mi_constante : %pi;
