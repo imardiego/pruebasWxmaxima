@@ -1,4 +1,4 @@
-/* qmaxima.mac - Módulo para exportar operaciones cuánticas a Qiskit */
+/* qmaxima.mac - Módulo para exportar operaciones cuánticas a Qiskit (versión corregida) */
 
 /* === Variables globales === */
 quantum_ops : []$
@@ -18,9 +18,9 @@ qmaxima_has_qinf() := block(
     return(has)
 )$
 
-/* === Inferir número de qubits (versión corregida) === */
+/* === Inferir número de qubits de un estado (versión robusta con catch/throw) === */
 qmaxima_nq_from_state(state) := block(
-    [n_rows, n_cols, n, k, found : false, result : 1],
+    [n_rows, n_cols, n, k],
     if not matrixp(state) then (
         print("❌ El estado debe ser una matriz."),
         return(1)
@@ -29,42 +29,25 @@ qmaxima_nq_from_state(state) := block(
     n_cols : length(state[1]),
     if n_rows = 1 then n : n_cols else n : n_rows,
     
-    /* Buscar k tal que 2^k = n */
-    for k:0 thru 20 do (  /* soporta hasta 2^20 ≈ 1 millón de amplitudes */
-        if 2^k = n then (
-            result : k,
-            found : true,
-            k : 21  /* salir del bucle (truco en Maxima) */
-        )
-    ),
-    
-    if found then return(result)
-    else (
+    catch(
+        for k:0 thru 20 do (
+            if 2^k = n then throw(k)
+        ),
         print("❌ Estado no tiene tamaño 2^n. Tamaño detectado:", n),
-        return(1)
+        1
     )
 )$
 
-
-/* === Expandir puerta de 1 qubit a sistema de nq qubits (corregida) === */
+/* === Expandir puerta de 1 qubit a sistema de nq qubits === */
 qmaxima_expand_1q_gate(gate1, target, nq) := block(
     [ops, i, result],
     if nq = 1 then return(gate1),
-    /* Crear lista de identidades */
     ops : makelist(ident(2), i, 1, nq),
-    /* Reemplazar la posición del qubit objetivo */
-    /* Nota: target=0 → primer qubit (más significativo en Qiskit) */
     ops[target + 1] : gate1,
-    /* Construir producto tensorial en orden: q0 ⊗ q1 ⊗ ... ⊗ q_{n-1} */
     result : ops[1],
-    for i:2 thru nq do (
-        result : kronecker_product(result, ops[i])
-    ),
+    for i:2 thru nq do result : kronecker_product(result, ops[i]),
     return(result)
 )$
-
-
-
 
 /* === Puerta Hadamard === */
 h(q, state) := block(
@@ -74,7 +57,7 @@ h(q, state) := block(
     H : (1/sqrt(2)) * matrix([1,1],[1,-1]),
     full_gate : qmaxima_expand_1q_gate(H, q, nq),
     result : full_gate . state,
-    quantum_ops : append(quantum_ops, ['op='h, 'qubits=[q], 'nq=nq, 'input=state, 'output=result]),
+    quantum_ops : append(quantum_ops, ['h, [q], nq, state, result]),
     return(result)
 )$
 
@@ -86,11 +69,11 @@ x(q, state) := block(
     X : matrix([0,1],[1,0]),
     full_gate : qmaxima_expand_1q_gate(X, q, nq),
     result : full_gate . state,
-    quantum_ops : append(quantum_ops, ['op='x, 'qubits=[q], 'nq=nq, 'input=state, 'output=result]),
+    quantum_ops : append(quantum_ops, ['x, [q], nq, state, result]),
     return(result)
 )$
 
-/* === Puerta CNOT (solo 2 qubits en este prototipo) === */
+/* === Puerta CNOT (solo 2 qubits) === */
 cx(control, target, state) := block(
     [nq, result, gate],
     nq : qmaxima_nq_from_state(state),
@@ -108,7 +91,7 @@ cx(control, target, state) := block(
         return(state)
     ),
     result : gate . state,
-    quantum_ops : append(quantum_ops, ['op='cx, 'qubits=[control,target], 'nq=nq, 'input=state, 'output=result]),
+    quantum_ops : append(quantum_ops, ['cx, [control, target], nq, state, result]),
     return(result)
 )$
 
@@ -121,8 +104,7 @@ qmaxima_parse() := block(
     qmaxima_num_qubits : lmax(nq_list),
     qmaxima_parsed_circuit : [],
     for i:1 thru length(ops) do (
-        if ops[i][1] # 'unknown then
-            qmaxima_parsed_circuit : append(qmaxima_parsed_circuit, [[ops[i][1], ops[i][2]]])
+        qmaxima_parsed_circuit : append(qmaxima_parsed_circuit, [[ops[i][1], ops[i][2]]])
     ),
     qmaxima_maxima_final_state : ops[length(ops)][5],
     print("✅ Parseado. Número de qubits:", qmaxima_num_qubits),
@@ -145,6 +127,9 @@ qmaxima_draw() := block(
     code : sconcat(code,
         "\n# Guardar circuito\n",
         "qc.draw('mpl', filename='qmaxima_circuit.png')\n",
+        "\n# Mostrar circuito en ASCII\n",
+        "print('=== CIRCUITO (ASCII) ===')\n",
+        "print(qc.draw())\n",
         "\n# Simular estado final\n",
         "backend = Aer.get_backend('statevector_simulator')\n",
         "job = execute(qc, backend)\n",
@@ -157,10 +142,7 @@ qmaxima_draw() := block(
     ),
     with_stdout("/tmp/qmaxima_circuit.py", print(code)),
     print("✅ Código Qiskit guardado en /tmp/qmaxima_circuit.py"),
-    print("🖼️  Imagen del circuito: qmaxima_circuit.png (se genera al ejecutar)"),
-    
-    print("===CIRCUITO ASCII ==="),
-    print(qc.draw()),
+    print("🖼️  Imagen: qmaxima_circuit.png | Texto: se mostrará al ejecutar"),
     return(true)
 )$
 
@@ -174,12 +156,18 @@ qmaxima_run_qiskit() := block(
         if ssearch("QISKIT_STATE_START", line) # false then in_state : true
         elseif ssearch("QISKIT_STATE_END", line) # false then in_state : false
         elseif in_state then (
-            /* Manejar notación científica si aparece */
             line : ssubst("E", "e", line),
             real_str : substring(line, 1, ssearch("+", line)-1),
             imag_str : substring(line, ssearch("+", line)+1, ssearch("j", line)-1),
             real_val : parse_string(real_str), imag_val : parse_string(imag_str),
             state_list : append(state_list, [real_val + %i*imag_val])
+        )
+        elseif ssearch("=== CIRCUITO (ASCII) ===", line) # false then (
+            print(""),
+            print("=== CIRCUITO CUÁNTICO (ASCII) ===")
+        )
+        elseif ssearch("q_", line) # false or ssearch("=", line) # false then (
+            if in_state = false then print(line)
         )
     ),
     if state_list = [] then (
@@ -238,6 +226,7 @@ qmaxima_help() := block(
     print("============================================"),
     print(""),
     print("🔹 EJEMPLO: Estado de Bell"),
+    print("   load(\"linearalgebra\")$"),
     print("   zero : matrix([1],[0]);"),
     print("   psi0 : kronecker_product(zero, zero);"),
     print("   psi1 : h(0, psi0);"),
@@ -250,9 +239,9 @@ qmaxima_help() := block(
     print("   cx(c,t,estado)   → CNOT (control c → target t)"),
     print(""),
     print("🔹 NOTAS:"),
+    print("   - ¡Carga linearalgebra antes de kronecker_product!"),
     print("   - Los qubits se numeran desde 0."),
     print("   - El estado debe ser un vector columna."),
-    print("   - No uses matrices manuales (H . psi) si quieres exportar."),
     print("============================================")
 )$
 
