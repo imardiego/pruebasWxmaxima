@@ -1,0 +1,125 @@
+/* qmaxima_test.mac - Pruebas automáticas (sintaxis compatible) */
+
+qmaxima_run_tests() := block(
+    [zero, psi0, psi1, psi_bell, expected_psi1, expected_bell, file_content],
+    
+    print("🧪 Iniciando pruebas de qmaxima..."),
+    
+    /* === 1. Cargar dependencias === */
+    if not load("linearalgebra") then (
+        print("❌ ERROR: No se pudo cargar linearalgebra"),
+        return(false)
+    ),
+    
+    if not load("qmaxima") then (
+        print("❌ ERROR: No se pudo cargar qmaxima"),
+        return(false)
+    ),
+    
+    print("✅ Dependencias cargadas."),
+    
+    /* === 2. Reiniciar estado global === */
+    quantum_ops : [],
+    qmaxima_parsed_circuit : [],
+    qmaxima_maxima_final_state : false,
+    qmaxima_qiskit_final_state : false,
+    
+    /* === 3. Definir estado base === */
+    zero : matrix([1],[0]),
+    psi0 : kronecker_product(zero, zero),
+    
+    if not matrixp(psi0) then (
+        print("❌ ERROR: psi0 no es una matriz"),
+        return(false)
+    ),
+    
+    if length(psi0) # 4 then (
+        print("❌ ERROR: psi0 no tiene tamaño 4"),
+        return(false)
+    ),
+    
+    print("✅ Estado inicial |00> válido."),
+    
+    /* === 4. Aplicar puertas === */
+    psi1 : h(0, psi0),
+    if length(quantum_ops) # 1 then (
+        print("❌ ERROR: h(0, psi0) no registró operación"),
+        return(false)
+    ),
+    
+    psi_bell : cx(0, 1, psi1),
+    if length(quantum_ops) # 2 then (
+        print("❌ ERROR: cx(0,1,psi1) no registró operación"),
+        return(false)
+    ),
+    
+    print("✅ Puertas registradas correctamente."),
+    
+    /* === 5. Verificar estado intermedio === */
+    expected_psi1 : matrix([1/sqrt(2)], [0], [1/sqrt(2)], [0]),
+    if not is(equal(ratsimp(psi1), ratsimp(expected_psi1))) then (
+        print("❌ ERROR: psi1 no coincide con el estado esperado"),
+        print("Obtenido:"), print(psi1),
+        print("Esperado:"), print(expected_psi1),
+        return(false)
+    ),
+    
+    print("✅ Estado intermedio correcto."),
+    
+    /* === 6. Verificar estado final (Bell) === */
+    expected_bell : matrix([1/sqrt(2)], [0], [0], [1/sqrt(2)]),
+    if not is(equal(ratsimp(psi_bell), ratsimp(expected_bell))) then (
+        print("❌ ERROR: psi_bell no es el estado de Bell"),
+        print("Obtenido:"), print(psi_bell),
+        print("Esperado:"), print(expected_bell),
+        return(false)
+    ),
+    
+    print("✅ Estado final de Bell correcto."),
+    
+    /* === 7. Parsear operaciones === */
+    if not qmaxima_parse() then (
+        print("❌ ERROR: qmaxima_parse() falló"),
+        return(false)
+    ),
+    
+    if qmaxima_num_qubits # 2 then (
+        print("❌ ERROR: Número de qubits incorrecto:", qmaxima_num_qubits),
+        return(false)
+    ),
+    
+    if length(qmaxima_parsed_circuit) # 2 then (
+        print("❌ ERROR: Número de operaciones parseadas incorrecto"),
+        return(false)
+    ),
+    
+    print("✅ Parseo correcto."),
+    
+    /* === 8. Generar código Qiskit === */
+    if not qmaxima_draw() then (
+        print("❌ ERROR: qmaxima_draw() falló"),
+        return(false)
+    ),
+    
+    /* Verificar que el archivo se creó */
+    file_content : read_string("/tmp/qmaxima_circuit.py"),
+    if ssearch("qc.h(0)", file_content) = false then (
+        print("❌ ERROR: Código Qiskit no contiene qc.h(0)"),
+        return(false)
+    ),
+    
+    if ssearch("qc.cx(0,1)", file_content) = false then (
+        print("❌ ERROR: Código Qiskit no contiene qc.cx(0,1)"),
+        return(false)
+    ),
+    
+    print("✅ Código Qiskit generado correctamente."),
+    
+    /* === 9. Resultado final === */
+    print("🎉 ¡Todas las pruebas pasaron!"),
+    print("   qmaxima está listo para usar."),
+    return(true)
+)$
+
+/* Ejecutar pruebas al cargar */
+qmaxima_run_tests()$
