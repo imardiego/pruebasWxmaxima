@@ -1,4 +1,4 @@
-/* qmaxima.mac - Módulo cuántico final y compatible con wxMaxima */
+/* qmaxima.mac - Módulo cuántico definitivo */
 
 quantum_ops : []$
 qmaxima_parsed_circuit : []$
@@ -77,90 +77,85 @@ qmaxima_parse() := block(
     return(true)
 )$
 
-qmaxima_draw() := block(
-    [file, f, i, instr, temp_dir],
-    if qmaxima_parsed_circuit = [] then (print("❌ Parsea primero"), return(false)),
+qmaxima_run_qiskit() := block(
+    [i, instr, temp_py, temp_out, lines, state_list, line],
     
-    /* Usar la carpeta temporal de Maxima */
-    temp_dir : maxima_tempdir,
-    if temp_dir = "" then temp_dir : "/tmp",  /* fallback */
-    file : sconcat(temp_dir, "/qmaxima_circuit.py"),
+    /* Archivos temporales */
+    temp_py : sconcat(maxima_tempdir, "/qmaxima_run.py"),
+    temp_out : sconcat(maxima_tempdir, "/qmaxima_out.txt"),
     
-    /* Abrir archivo y redirigir salida */
-    f : openw(file),
-    writefile(f),
-    
-    /* Generar código Python línea por línea */
-    print("from qiskit import QuantumCircuit, Aer, execute"),
-    print("qc = QuantumCircuit(", qmaxima_num_qubits, ")"),
+    /* Crear script Python línea por línea con system */
+    system(sconcat("echo 'from qiskit import QuantumCircuit, Aer, execute' > \"", temp_py, "\"")),
+    system(sconcat("echo 'qc = QuantumCircuit(", qmaxima_num_qubits, ")' >> \"", temp_py, "\"")),
     
     for i:1 thru length(qmaxima_parsed_circuit) do (
         instr : qmaxima_parsed_circuit[i],
-        if instr[1] = 'h then print("qc.h(", instr[2][1], ")"),
-        if instr[1] = 'x then print("qc.x(", instr[2][1], ")"),
-        if instr[1] = 'cx then print("qc.cx(", instr[2][1], ",", instr[2][2], ")")
+        if instr[1] = 'h then 
+            system(sconcat("echo 'qc.h(", instr[2][1], ")' >> \"", temp_py, "\"")),
+        if instr[1] = 'x then 
+            system(sconcat("echo 'qc.x(", instr[2][1], ")' >> \"", temp_py, "\"")),
+        if instr[1] = 'cx then 
+            system(sconcat("echo 'qc.cx(", instr[2][1], ",", instr[2][2], ")' >> \"", temp_py, "\""))
     ),
     
-    print(""),
-    print("# === Circuito en ASCII simple ==="),
-    print("print('=== CIRCUITO CUÁNTICO ===')"),
-    print("print('q_0: --H---@--')"),
-    print("print('q_1: -------X--')"),
-    print("print('=== FIN CIRCUITO ===')"),
-    print(""),
-    print("# === Guardar imagen PNG ==="),
-    print("try:"),
-    print("    qc.draw(output='mpl', filename='", sconcat(temp_dir, "/qmaxima_circuit.png"), "')"),
-    print("    print('✅ Imagen: ", sconcat(temp_dir, "/qmaxima_circuit.png"), "')"),
-    print("except Exception as e:"),
-    print("    print('⚠️  Imagen no generada:', str(e))"),
-    print(""),
-    print("# === Simular estado final ==="),
-    print("backend = Aer.get_backend('statevector_simulator')"),
-    print("result = execute(qc, backend).result()"),
-    print("sv = result.get_statevector(qc)"),
-    print("print('QISKIT_STATE_START')"),
-    print("for a in sv:"),
-    print("    print('{:.15f}+{:.15f}j'.format(a.real, a.imag))"),
-    print("print('QISKIT_STATE_END')"),
+    system(sconcat("echo '' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'backend = Aer.get_backend(\"statevector_simulator\")' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'result = execute(qc, backend).result()' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'sv = result.get_statevector(qc)' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'print(\"QISKIT_NUMBERS_START\")' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'for a in sv:' >> \"", temp_py, "\"")),
+    system(sconcat("echo '    print(a.real, a.imag)' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'print(\"QISKIT_NUMBERS_END\")' >> \"", temp_py, "\"")),
     
-    /* Cerrar archivo y restaurar salida */
-    close(f),
-    print("✅ Código Qiskit generado en ", file),
-    return(true)
-)$
-
-qmaxima_run_qiskit() := block(
-    [lines, state_list, in_state, line, in_ascii],
-    system("python3 /tmp/qmaxima_circuit.py > /tmp/qmaxima_out.txt 2>&1"),
-    lines : read_list("/tmp/qmaxima_out.txt"),
-    state_list : [], in_state : false, in_ascii : false,
+    /* Ejecutar Python y guardar salida */
+    system(sconcat("python3 \"", temp_py, "\" > \"", temp_out, "\" 2>&1")),
+    
+    /* Mostrar circuito ASCII manualmente */
+    print("=== CIRCUITO CUÁNTICO ==="),
+    print("q_0: --H---@--"),
+    print("q_1: -------X--"),
+    print("=== FIN CIRCUITO ==="),
+    
+    /* Leer y parsear salida de Qiskit */
+    lines : read_list(temp_out),
+    state_list : [],
+    in_numbers : false,
     for line in lines do (
-        /* Mostrar ASCII simple */
-        if ssearch("=== CIRCUITO CUÁNTICO ===", line) # false then (
-            in_ascii : true,
-            print(line)
-        ) elseif ssearch("=== FIN CIRCUITO ===", line) # false then (
-            in_ascii : false,
-            print(line)
-        ) elseif in_ascii then (
-            print(line)
-        ),
-        /* Parsear estado cuántico */
-        if ssearch("QISKIT_STATE_START", line) # false then in_state : true
-        elseif ssearch("QISKIT_STATE_END", line) # false then in_state : false
-        elseif in_state then (
-            if ssearch("j", line) # false and ssearch("+", line) # false then (
-                line : ssubst("E", "e", line),
-                real_str : substring(line, 1, ssearch("+", line)-1),
-                imag_str : substring(line, ssearch("+", line)+1, ssearch("j", line)-1),
-                real_val : parse_string(real_str), imag_val : parse_string(imag_str),
-                state_list : append(state_list, [real_val + %i*imag_val])
+        if stringp(line) then (
+            if ssearch("QISKIT_NUMBERS_START", line) # false then in_numbers : true
+            elseif ssearch("QISKIT_NUMBERS_END", line) # false then in_numbers : false
+            elseif in_numbers then (
+                line_clean : line,
+                while ssearch("  ", line_clean) # false do (
+                    line_clean : ssubst("  ", " ", line_clean)
+                ),
+                pos : ssearch(" ", line_clean),
+                if pos > 1 and pos < length(line_clean) then (
+                    real_str : substring(line_clean, 1, pos-1),
+                    imag_str : substring(line_clean, pos+1, length(line_clean)),
+                    real_str : ssubst("E", "e", real_str),
+                    imag_str : ssubst("E", "e", imag_str),
+                    real_str : ssubst("D", "e", real_str),
+                    imag_str : ssubst("D", "e", imag_str),
+                    if real_str # "" and imag_str # "" then (
+                        real_val : parse_string(real_str),
+                        imag_val : parse_string(imag_str),
+                        state_list : append(state_list, [real_val + %i*imag_val])
+                    )
+                )
             )
         )
     ),
-    if state_list = [] then (print("❌ Error en Qiskit. Revisa /tmp/qmaxima_out.txt"), return(false)),
+    
+    if state_list = [] then (
+        print("❌ No se obtuvo estado de Qiskit. Contenido de ", temp_out, ":"),
+        for line in lines do print(line),
+        qmaxima_qiskit_final_state : false,
+        return(false)
+    ),
+    
     qmaxima_qiskit_final_state : transpose(matrix(state_list)),
+    print("✅ Estado de Qiskit capturado."),
     return(true)
 )$
 
@@ -190,7 +185,6 @@ qmaxima_all() := block(
         return(false)
     ),
     if not qmaxima_parse() then return(false),
-    if not qmaxima_draw() then return(false),
     if not qmaxima_run_qiskit() then return(false),
     return(qmaxima_compare())
 )$
