@@ -1,103 +1,15 @@
-# maximaMacro.jl
-# Macros para ejecutar Maxima desde Julia
+module MaximaMacro
+
+export @maxima, @maxima_cell, @maxima_session
+
 """
-# Macro simple para ejecutar un único comando Maxima
-@maxima comando
-Devolverá la salida de un único comando Maxima.
+@maxima expr
 
-# Ejemplo 1: Derivada
+Ejecuta un único comando de Maxima y muestra su salida.
+
+# Ejemplo
+
 @maxima diff(x^2 + sin(x), x)
-
-# Ejemplo 2: Integral
-@maxima integrate(x^2, x)
-
-# Ejemplo 3: Simplificación
-@maxima ratsimp((x^2 - 1)/(x - 1))
-
-@maxima integrate(exp(-x^2),x)
-
-
-Devolverá la salida de cada comando Maxima.
-
-diff(x^2+sin(x),x)
-                                 cos(x) + 2 x
-
-
-integrate(x^2,x)
-                                       3
-                                      x
-                                      --
-                                      3
-
-
-ratsimp((x^2-1)/(x-1))
-                                     x + 1
-
-
-integrate(exp(-x^2),x)
-                               sqrt(%pi) erf(x)
-                               ----------------
-                                      2
-
-
-#############################################################
-
-@maxima_cell begin
-    expand((x + 1)^3);
-    diff(sin(x)^2, x);
-    integrate(exp(-x^2), x);
-    H : 1/sqrt(2) * matrix([1, 1], [1, -1]); 
-    I : ident(2);
-end
-
-Devolverá la salida de varios comandos Maxima en bloque.
-# Ejemplo de uso de @maxima_cell
-
-💡 Comando: expand((x + 1) ^ 3)
-
-💡 Respuesta maxima:
-expand((x+1)^3)
-                               3      2
-                              x  + 3 x  + 3 x + 1
-
-
-💡 Comando: diff(sin(x) ^ 2, x)
-
-💡 Respuesta maxima:
-diff(sin(x)^2,x)
-                                2 cos(x) sin(x)
-
-
-💡 Comando: integrate(exp(-(x ^ 2)), x)
-
-💡 Respuesta maxima:
-integrate(exp(-x^2),x)
-                               sqrt(%pi) erf(x)
-                               ----------------
-                                      2
-
-
-💡 Comando: H:(1 / sqrt(2)) * matrix([1, 1], [1, -1])
-
-💡 Respuesta maxima:
-H:(1/sqrt(2))*matrix([1,1],[1,-1])
-                            [    1         1     ]
-                            [ -------   -------  ]
-                            [ sqrt(2)   sqrt(2)  ]
-                            [                    ]
-                            [    1          1    ]
-                            [ -------  - ------- ]
-                            [ sqrt(2)    sqrt(2) ]
-
-
-💡 Comando: I:ident(2)
-
-💡 Respuesta maxima:
-I:ident(2)
-                                   [ 1  0 ]
-                                   [      ]
-                                   [ 0  1 ]
-
 
 """
 
@@ -107,7 +19,15 @@ macro maxima(expr)
     print("💡",read(`maxima --very-quiet --batch-string="$cmd;"`, String))
 end
 
+"""
+@maxima_cell begin
+expand((x + 1)^3)
+diff(sin(x)^2, x)
+end
 
+Ejecuta varios comandos de Maxima, cada uno en su propia instancia.
+Ideal para ejemplos independientes.
+"""
 
 macro maxima_cell(ex)
     cmds = String[]
@@ -132,8 +52,83 @@ macro maxima_cell(ex)
     end
 end
 
+"""
+@maxima_session begin
+x = 1
+y = x^2
+z = x + y
+z
+end
 
+Ejecuta un bloque de comandos en una única sesión de Maxima (estado persistente).
 
+Usa = para asignación (se convierte a : de Maxima).
+Funciona con Maxima+GCL (usa --batch-string, sin archivos temporales).
+Ideal para cálculos con variables, matrices, librerías como qinf, etc.
+"""
 
+macro maxima_session(ex)
+    cmds = String[]
+    if ex isa Expr && ex.head === :block
+        for stmt in ex.args
+            cmd_str = ""
+            if stmt isa Expr && stmt.head === :(=)
+                try
+                    lhs = string(stmt.args[1])
+                    rhs = string(stmt.args[2])
+                    lhs = replace(lhs, r"\s+" => "")
+                    rhs = replace(rhs, r"\s+" => "")
+                    if !isempty(lhs) && !isempty(rhs)
+                        cmd_str = "$(lhs):$(rhs)"
+                    end
+                catch
+                end
+            else
+                s = string(stmt)
+                s = replace(s, r"#=.+?=#" => "")
+                s = replace(s, r";+$" => "")
+                s = replace(s, r"\s+" => "")
+                if !isempty(s)
+                    cmd_str = s
+                end
+            end
+            if !isempty(cmd_str)
+                push!(cmds, cmd_str)
+            end
+        end
+    else
+        return :(nothing)
+    end
+
+    if isempty(cmds)
+        return :(nothing)
+    end
+
+    # ✅ Último comando con ;, los demás con $
+    n = length(cmds)
+    for i in 1:n
+        if i == n
+            cmds[i] *= ";"
+        else
+            cmds[i] *= "\$"
+        end
+    end
+
+    full_cmd = join(cmds, "")
+    output = read(`maxima --very-quiet --batch-string="$full_cmd"`, String)
+    
+    # ✅ Extraer solo la parte del resultado (última línea no vacía útil)
+    lines = [strip(l) for l in split(output, '\n') if !isempty(strip(l))]
+    if !isempty(lines)
+        # Tomar la última línea que parece un resultado
+        result = lines[end]
+        # Eliminar prefijo como (%o4) si existe
+        result = replace(result, r"^\s*$$%[io]\d+$$\s*" => "")
+        println(result)
+    end
+    return nothing
+end
+
+end
 
 
