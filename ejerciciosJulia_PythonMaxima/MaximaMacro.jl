@@ -13,6 +13,7 @@ Ejecuta un único comando de Maxima y muestra su salida.
 
 """
 
+
 # Macro simple para ejecutar un único comando Maxima
 macro maxima(expr)
     cmd = replace(string(expr), "\"" => "\\\"")
@@ -129,6 +130,6 @@ macro maxima_session(ex)
     return nothing
 end
 
-end
+end # module
 
 

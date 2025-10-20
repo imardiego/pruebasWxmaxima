@@ -1,4 +1,4 @@
-#!/bin/sh
+!/bin/sh
 
 # This will install files in your home directory in
 # Maxima's search path. It would be a good idea to
