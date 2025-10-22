@@ -1,73 +1,132 @@
 module MaximaMacro
 
-export @maxima, @maxima_cell, @maxima_session
+export @maxima, @maxima_cell, @maxima_session, maxima_eval, maxima_eval_float
+
+# Variables de entorno para GCL (según Camm Maguire, GCL developer)
+# Fuente: https://lists.gnu.org/archive/html/gcl-devel/2017-09/msg00000.html
+const _GCL_ENV = Dict(
+    "GCL_MEM_MULTIPLE" => "0.3",     # Usa solo el 30% de la RAM física
+    "GCL_GC_PAGE_THRESH" => "0.2",   # Inicia GC más temprano
+    "GCL_GC_ALLOC_MIN" => "0.01",    # Mínima asignación entre GCs
+    "GCL_GC_PAGE_MAX" => "0.5"       # Fuerza GC antes de llegar al 50% del heap
+)
+
+
+"""
+    maxima_eval(cmd::String)
+
+Ejecuta un comando de Maxima y devuelve el resultado como `String`.
+
+# Ejemplo
+
+maxima_eval("diff(x^2, x)")  # → "2*x"
+maxima_eval("x:3; x^2+1")  # → "9"
+
+"""
+
+
+function maxima_eval(cmd::String)
+    cmd = strip(cmd)
+    if !endswith(cmd, ";")
+        cmd *= ";"
+    end
+        cmd *= "\n" # Evita "Premature termination" en GCL
+    safe_cmd = replace(cmd, "\"" => "\\\"")
+    env = copy(ENV)
+    merge!(env, _GCL_ENV)
+    raw_output = read(setenv(`maxima --very-quiet --batch-string="$safe_cmd;"`, env), String)
+    
+    # ✅ Eliminar caracteres no imprimibles (nulos, controles)
+    clean_output = filter(c -> c >= ' ' && c <= '~' || c == '\n' || c == '\r', raw_output)
+    
+    lines = [strip(l) for l in split(clean_output, '\n') if !isempty(strip(l))]
+    
+    # ✅ Buscar la última línea que sea un número o expresión (no comando)
+    for i in length(lines):-1:1
+        l = lines[i]
+        # Si contiene :, es un comando (x:4)
+        # Si empieza con (, es un prompt (%o1)
+        if !contains(l, ":") && !startswith(l, "(") && !startswith(l, "incorrect syntax") && 
+           !startswith(l, "batch(") && l != ";" && l != "^"
+           return l
+        end
+    end
+    return ""
+end
+
+"""
+    maxima_eval_float(cmd::String)
+
+Ejecuta un comando de Maxima y devuelve el resultado como Float64 si es numérico.
+Si no es numérico, devuelve el resultado como String.
+
+# Ejemplo
+maxima_eval_float("float(22/7)")      # → 3.142857142857143
+maxima_eval_float("sqrt(2)")          # → "sqrt(2)" (no es numérico sin float())
+maxima_eval_float("float(sqrt(2))")   # → 1.4142135623730951"
+
+"""
+
+function maxima_eval_float(cmd::String)
+    res = maxima_eval(cmd)
+    if res == ""
+        return res
+    end
+
+    try
+    # Intentar convertir a número
+        return parse(Float64, res)
+    catch
+    # Si falla, devolver el string original
+        return res
+    end
+end
 
 """
 @maxima expr
 
-Ejecuta un único comando de Maxima y muestra su salida.
-
-# Ejemplo
-
-@maxima diff(x^2 + sin(x), x)
-
+Ejecuta un único comando de Maxima.
 """
-
-
-# Macro simple para ejecutar un único comando Maxima
 macro maxima(expr)
-    cmd = replace(string(expr), "\"" => "\\\"")
-    print("💡",read(`maxima --very-quiet --batch-string="$cmd;"`, String))
+    cmd_str=string(expr)
+    escaped_cmd = replace(cmd_str, "\"" => "\\\"")
+    out=read(`maxima --very-quiet --batch-string="$escaped_cmd;"`, String)
+    #println("DEBUG: Salida = ", repr(out[2:end])) # Depuración
+    out=out[2:end] # Eliminar el primer carácter de nueva línea
+    print("💡 ", out)
 end
 
 """
-@maxima_cell begin
-expand((x + 1)^3)
-diff(sin(x)^2, x)
-end
+@maxima_cell begin ... end
 
-Ejecuta varios comandos de Maxima, cada uno en su propia instancia.
-Ideal para ejemplos independientes.
+Ejecuta varios comandos, cada uno en su propia instancia.
 """
-
 macro maxima_cell(ex)
     cmds = String[]
     if ex isa Expr && ex.head === :block
         for stmt in ex.args
-            s = replace(string(stmt), r"#=.*?=#" => "") |> strip
+            s = replace(string(stmt), r"#=.+?=#" => "") |> strip
             s = replace(s, r";+$" => "") |> strip
             !isempty(s) && push!(cmds, s)
         end
     else
-        s = replace(string(ex), r"#=.*?=#" => "") |> strip
+        s = replace(string(ex), r"#=.+?=#" => "") |> strip
         s = replace(s, r";+$" => "") |> strip
         !isempty(s) && push!(cmds, s)
     end
     for cmd in cmds
         escaped = replace(cmd, "\"" => "\\\"")
         out = read(`maxima --very-quiet --batch-string="$escaped;"`, String)
-        #println("\n💡 Comando: ", cmd)
-        #println("💡 Respuesta Maxima:")
-        println("💡",out)
-        #print(out)
+        out=(out[2:end]) # Eliminar el primer carácter de nueva línea
+        println("💡 ", out)
     end
 end
 
 """
-@maxima_session begin
-x = 1
-y = x^2
-z = x + y
-z
-end
+@maxima_session begin ... end
 
-Ejecuta un bloque de comandos en una única sesión de Maxima (estado persistente).
-
-Usa = para asignación (se convierte a : de Maxima).
-Funciona con Maxima+GCL (usa --batch-string, sin archivos temporales).
-Ideal para cálculos con variables, matrices, librerías como qinf, etc.
+Ejecuta un bloque en una única sesión (estado persistente).
 """
-
 macro maxima_session(ex)
     cmds = String[]
     if ex isa Expr && ex.head === :block
@@ -80,7 +139,7 @@ macro maxima_session(ex)
                     lhs = replace(lhs, r"\s+" => "")
                     rhs = replace(rhs, r"\s+" => "")
                     if !isempty(lhs) && !isempty(rhs)
-                        cmd_str = "$(lhs):$(rhs)"
+                        cmd_str = "$(lhs):$(rhs);"
                     end
                 catch
                 end
@@ -90,7 +149,7 @@ macro maxima_session(ex)
                 s = replace(s, r";+$" => "")
                 s = replace(s, r"\s+" => "")
                 if !isempty(s)
-                    cmd_str = s
+                    cmd_str = s * ";"
                 end
             end
             if !isempty(cmd_str)
@@ -105,31 +164,28 @@ macro maxima_session(ex)
         return :(nothing)
     end
 
-    # ✅ Último comando con ;, los demás con $
-    n = length(cmds)
-    for i in 1:n
-        if i == n
-            cmds[i] *= ";"
-        else
-            cmds[i] *= "\$"
+    full_cmd = join(cmds, " ")
+    escaped_cmd = replace(full_cmd, "\"" => "\\\"")
+    
+    # Depuración
+    #println("DEBUG: Comando = ", repr(full_cmd))
+    
+    output = read(`maxima --very-quiet --batch-string="$escaped_cmd"`, String)
+    #println("DEBUG: Salida = ", repr(output))
+    
+    # Extraer el último resultado numérico o simbólico
+    lines = [strip(l) for l in split(output, '\n') if !isempty(strip(l))]
+    # Tomar la última línea que NO es un comando (no contiene :)
+    for i in length(lines):-1:1
+        if !contains(lines[i], ":") && !startswith(lines[i], "(")
+            println("💡 ",lines[i])
+            return nothing
         end
     end
-
-    full_cmd = join(cmds, "")
-    output = read(`maxima --very-quiet --batch-string="$full_cmd"`, String)
-    
-    # ✅ Extraer solo la parte del resultado (última línea no vacía útil)
-    lines = [strip(l) for l in split(output, '\n') if !isempty(strip(l))]
     if !isempty(lines)
-        # Tomar la última línea que parece un resultado
-        result = lines[end]
-        # Eliminar prefijo como (%o4) si existe
-        result = replace(result, r"^\s*$$%[io]\d+$$\s*" => "")
-        println(result)
+        println(lines[end])
     end
     return nothing
 end
 
-end # module
-
-
+end # module MaximaMacro
