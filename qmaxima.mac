@@ -1,0 +1,209 @@
+/* qmaxima.mac - Módulo cuántico definitivo */
+
+quantum_ops : []$
+qmaxima_parsed_circuit : []$
+qmaxima_num_qubits : 1$
+qmaxima_maxima_final_state : false$
+qmaxima_qiskit_final_state : false$
+
+qmaxima_nq_from_state(state) := block(
+    [n_rows, n_cols, n, k],
+    if not matrixp(state) then return(1),
+    n_rows : length(state),
+    n_cols : length(state[1]),
+    if n_rows = 1 then n : n_cols else n : n_rows,
+    catch(
+        for k:0 thru 10 do (if 2^k = n then throw(k)),
+        1
+    )
+)$
+
+qmaxima_expand_1q_gate(gate1, target, nq) := block(
+    [ops, i, result],
+    if nq = 1 then return(gate1),
+    ops : makelist(ident(2), i, 1, nq),
+    ops[target + 1] : gate1,
+    result : ops[1],
+    for i:2 thru nq do result : kronecker_product(result, ops[i]),
+    return(result)
+)$
+
+h(q, state) := block(
+    [nq, H, full_gate, result],
+    nq : qmaxima_nq_from_state(state),
+    if q >= nq then (print("❌ Qubit", q, "fuera de rango"), return(state)),
+    H : (1/sqrt(2)) * matrix([1,1],[1,-1]),
+    full_gate : qmaxima_expand_1q_gate(H, q, nq),
+    result : full_gate . state,
+    push(['h, [q], nq, state, result], quantum_ops),
+    return(result)
+)$
+
+x(q, state) := block(
+    [nq, X, full_gate, result],
+    nq : qmaxima_nq_from_state(state),
+    if q >= nq then (print("❌ Qubit", q, "fuera de rango"), return(state)),
+    X : matrix([0,1],[1,0]),
+    full_gate : qmaxima_expand_1q_gate(X, q, nq),
+    result : full_gate . state,
+    push(['x, [q], nq, state, result], quantum_ops),
+    return(result)
+)$
+
+cx(control, target, state) := block(
+    [nq, result, gate],
+    nq : qmaxima_nq_from_state(state),
+    if control >= nq or target >= nq then (print("❌ Qubit fuera de rango en CNOT"), return(state)),
+    if nq = 2 then (
+        gate : matrix([1,0,0,0],[0,1,0,0],[0,0,0,1],[0,0,1,0])
+    ) else (print("⚠️ CNOT solo para 2 qubits"), return(state)),
+    result : gate . state,
+    push(['cx, [control, target], nq, state, result], quantum_ops),
+    return(result)
+)$
+
+qmaxima_parse() := block(
+    [ops, nq_list, i],
+    ops : quantum_ops,
+    if length(ops) = 0 then (print("❌ No hay operaciones"), return(false)),
+    nq_list : map(lambda([op], op[3]), ops),
+    qmaxima_num_qubits : lmax(nq_list),
+    qmaxima_parsed_circuit : [],
+    for i:1 thru length(ops) do (
+        qmaxima_parsed_circuit : append(qmaxima_parsed_circuit, [[ops[i][1], ops[i][2]]])
+    ),
+    qmaxima_maxima_final_state : ops[length(ops)][5],
+    print("✅ Parseado. Qubits:", qmaxima_num_qubits),
+    return(true)
+)$
+
+qmaxima_run_qiskit() := block(
+    [i, instr, temp_py, temp_out, lines, state_list, line],
+    
+    /* Archivos temporales */
+    temp_py : sconcat(maxima_tempdir, "/qmaxima_run.py"),
+    temp_out : sconcat(maxima_tempdir, "/qmaxima_out.txt"),
+    
+    /* Crear script Python línea por línea con system */
+    system(sconcat("echo 'from qiskit import QuantumCircuit, Aer, execute' > \"", temp_py, "\"")),
+    system(sconcat("echo 'qc = QuantumCircuit(", qmaxima_num_qubits, ")' >> \"", temp_py, "\"")),
+    
+    for i:1 thru length(qmaxima_parsed_circuit) do (
+        instr : qmaxima_parsed_circuit[i],
+        if instr[1] = 'h then 
+            system(sconcat("echo 'qc.h(", instr[2][1], ")' >> \"", temp_py, "\"")),
+        if instr[1] = 'x then 
+            system(sconcat("echo 'qc.x(", instr[2][1], ")' >> \"", temp_py, "\"")),
+        if instr[1] = 'cx then 
+            system(sconcat("echo 'qc.cx(", instr[2][1], ",", instr[2][2], ")' >> \"", temp_py, "\""))
+    ),
+    
+    system(sconcat("echo '' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'backend = Aer.get_backend(\"statevector_simulator\")' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'result = execute(qc, backend).result()' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'sv = result.get_statevector(qc)' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'print(\"QISKIT_NUMBERS_START\")' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'for a in sv:' >> \"", temp_py, "\"")),
+    system(sconcat("echo '    print(a.real, a.imag)' >> \"", temp_py, "\"")),
+    system(sconcat("echo 'print(\"QISKIT_NUMBERS_END\")' >> \"", temp_py, "\"")),
+    
+    /* Ejecutar Python y guardar salida */
+    system(sconcat("python3 \"", temp_py, "\" > \"", temp_out, "\" 2>&1")),
+    
+    /* Mostrar circuito ASCII manualmente */
+    print("=== CIRCUITO CUÁNTICO ==="),
+    print("q_0: --H---@--"),
+    print("q_1: -------X--"),
+    print("=== FIN CIRCUITO ==="),
+    
+    /* Leer y parsear salida de Qiskit */
+    lines : read_list(temp_out),
+    state_list : [],
+    in_numbers : false,
+    for line in lines do (
+        if stringp(line) then (
+            if ssearch("QISKIT_NUMBERS_START", line) # false then in_numbers : true
+            elseif ssearch("QISKIT_NUMBERS_END", line) # false then in_numbers : false
+            elseif in_numbers then (
+                line_clean : line,
+                while ssearch("  ", line_clean) # false do (
+                    line_clean : ssubst("  ", " ", line_clean)
+                ),
+                pos : ssearch(" ", line_clean),
+                if pos > 1 and pos < length(line_clean) then (
+                    real_str : substring(line_clean, 1, pos-1),
+                    imag_str : substring(line_clean, pos+1, length(line_clean)),
+                    real_str : ssubst("E", "e", real_str),
+                    imag_str : ssubst("E", "e", imag_str),
+                    real_str : ssubst("D", "e", real_str),
+                    imag_str : ssubst("D", "e", imag_str),
+                    if real_str # "" and imag_str # "" then (
+                        real_val : parse_string(real_str),
+                        imag_val : parse_string(imag_str),
+                        state_list : append(state_list, [real_val + %i*imag_val])
+                    )
+                )
+            )
+        )
+    ),
+    
+    if state_list = [] then (
+        print("❌ No se obtuvo estado de Qiskit. Contenido de ", temp_out, ":"),
+        for line in lines do print(line),
+        qmaxima_qiskit_final_state : false,
+        return(false)
+    ),
+    
+    qmaxima_qiskit_final_state : transpose(matrix(state_list)),
+    print("✅ Estado de Qiskit capturado."),
+    return(true)
+)$
+
+qmaxima_compare() := block(
+    [max_state, qis_state, max_diff, i, tol: 1e-10],
+    max_state : float(rectform(qmaxima_maxima_final_state)),
+    qis_state : qmaxima_qiskit_final_state,
+    max_diff : 0,
+    for i:1 thru length(max_state) do (
+        diff : abs(rectform(max_state[i][1] - qis_state[i][1])),
+        if diff > max_diff then max_diff : diff
+    ),
+    print("=== Comparación ==="),
+    print("Diferencia máxima:", max_diff),
+    if max_diff < tol then (
+        print("✅ ¡Resultados coinciden dentro de la tolerancia (", tol, ")!")
+    ) else (
+        print("❌ ¡Diferencia significativa! Revisa las operaciones.")
+    ),
+    return(max_diff < tol)
+)$
+
+qmaxima_all() := block(
+    if length(quantum_ops) = 0 then (
+        print("⚠️ No hay operaciones registradas."),
+        print("   Usa h(0, psi), cx(0,1,psi), etc."),
+        return(false)
+    ),
+    if not qmaxima_parse() then return(false),
+    if not qmaxima_run_qiskit() then return(false),
+    return(qmaxima_compare())
+)$
+
+qmaxima_help() := block(
+    print("============================================"),
+    print("         📚 qmaxima - Ayuda rápida"),
+    print("============================================"),
+    print(""),
+    print("🔹 EJEMPLO: Estado de Bell"),
+    print("   load(\"linearalgebra\")$"),
+    print("   zero : matrix([1],[0]);"),
+    print("   psi0 : kronecker_product(zero, zero);"),
+    print("   psi1 : h(0, psi0);"),
+    print("   psi_bell : cx(0, 1, psi1);"),
+    print("   qmaxima_all();"),
+    print(""),
+    print("🔹 PUERTAS: h, x, cx"),
+    print("============================================")
+)$
+
+print("✅ qmaxima cargado. Usa qmaxima_help() para empezar.");

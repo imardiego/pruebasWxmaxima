@@ -1,0 +1,104 @@
+/* qmaxima_test.mac - Pruebas automáticas corregidas */
+
+qmaxima_run_test() := block(
+    [zero, psi0, psi1, psi_bell, file_lines, found_h, found_cx, line],
+    
+    print("🧪 Iniciando prueba de qmaxima..."),
+    
+    /* === 1. Cargar dependencias === */
+    if not load("linearalgebra") then (
+        print("❌ ERROR: No se pudo cargar linearalgebra"),
+        return(false)
+    ),
+    
+    if not load("qmaxima") then (
+        print("❌ ERROR: No se pudo cargar qmaxima"),
+        return(false)
+    ),
+    
+    print("✅ Dependencias cargadas."),
+    
+    /* === 2. Reiniciar estado global === */
+    quantum_ops : [],
+    
+    /* === 3. Definir estado base === */
+    zero : matrix([1],[0]),
+    psi0 : kronecker_product(zero, zero),
+    
+    if not matrixp(psi0) then (
+        print("❌ ERROR: psi0 no es una matriz"),
+        return(false)
+    ),
+    
+    if length(psi0) # 4 then (
+        print("❌ ERROR: psi0 no tiene tamaño 4"),
+        return(false)
+    ),
+    
+    print("✅ Estado inicial |00> válido."),
+    
+    /* === 4. Aplicar puertas === */
+    psi1 : h(0, psi0),
+    if length(quantum_ops) # 1 then (
+        print("❌ ERROR: h(0, psi0) no registró operación"),
+        print("quantum_ops =", quantum_ops),
+        return(false)
+    ),
+    
+    psi_bell : cx(0, 1, psi1),
+    if length(quantum_ops) # 2 then (
+        print("❌ ERROR: cx(0,1,psi1) no registró operación"),
+        print("quantum_ops =", quantum_ops),
+        return(false)
+    ),
+    
+    print("✅ Puertas registradas correctamente."),
+    
+    /* === 5. Parsear operaciones === */
+    if not qmaxima_parse() then (
+        print("❌ ERROR: qmaxima_parse() falló"),
+        return(false)
+    ),
+    
+    if qmaxima_num_qubits # 2 then (
+        print("❌ ERROR: Número de qubits incorrecto:", qmaxima_num_qubits),
+        return(false)
+    ),
+    
+    print("✅ Parseo correcto."),
+    
+    /* === 6. Generar código Qiskit === */
+    if not qmaxima_draw() then (
+        print("❌ ERROR: qmaxima_draw() falló"),
+        return(false)
+    ),
+    
+    /* === 7. Verificar código Qiskit === */
+    file_lines : read_list("/tmp/qmaxima_circuit.py"),
+    found_h : false,
+    found_cx : false,
+    for line in file_lines do (
+        if ssearch("qc.h(0)", line) # false then found_h : true,
+        if ssearch("qc.cx(0,1)", line) # false then found_cx : true
+    ),
+    
+    if not found_h then (
+        print("❌ ERROR: Código Qiskit no contiene qc.h(0)"),
+        return(false)
+    ),
+    
+    if not found_cx then (
+        print("❌ ERROR: Código Qiskit no contiene qc.cx(0,1)"),
+        return(false)
+    ),
+    
+    print("✅ Código Qiskit generado correctamente."),
+    
+    /* === 8. Resultado final === */
+    print("🎉 ¡Todas las pruebas pasaron!"),
+    print("   qmaxima está listo para usar."),
+    return(true)
+)$
+
+/* Ejecutar prueba al cargar */
+qmaxima_run_test()$

@@ -1,0 +1,29 @@
+/* qmaxima_test.mac - Pruebas mínimas */
+
+qmaxima_run_test() := block(
+    [zero, psi0, psi1, psi_bell],
+    
+    print("🧪 Iniciando prueba mínima..."),
+    
+    if not load("linearalgebra") then (print("❌ linearalgebra no cargado"), return(false)),
+    if not load("qmaxima") then (print("❌ qmaxima no cargado"), return(false)),
+    
+    quantum_ops : [],
+    
+    zero : matrix([1],[0]),
+    psi0 : kronecker_product(zero, zero),
+    
+    if not matrixp(psi0) then (print("❌ psi0 no es matriz"), return(false)),
+    if length(psi0) # 4 then (print("❌ psi0 no es tamaño 4"), return(false)),
+    
+    psi1 : h(0, psi0),
+    if length(quantum_ops) # 1 then (print("❌ h no registró operación"), return(false)),
+    
+    psi_bell : cx(0, 1, psi1),
+    if length(quantum_ops) # 2 then (print("❌ cx no registró operación"), return(false)),
+    
+    print("✅ Prueba mínima exitosa."),
+    return(true)
+)$
+
+qmaxima_run_test()$

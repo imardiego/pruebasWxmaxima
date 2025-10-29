@@ -1,0 +1,99 @@
+Version 0.1.0
+Wed May  9 22:23:47 CEST 2018 John Lapeyre
+	* Update many things
+	* Migrate to github
+	* Renumber git tags for previous versions, to agree with
+	  symantic versioning. E.g. the last version was 0.0.12
+
+Version 0.12
+2008-09-03  John Lapeyre  <lapeyre@physics.arizona.edu>
+
+	* added some Mma compatibility functions.
+	* added some functions and ideas from code of R Griffiths
+	* added more helper functions
+
+Version 0.11
+2008-09-01  John Lapeyre  <lapeyre@physics.arizona.edu>
+
+	* added normalize_matrix. documented this and normalize_vector.
+
+
+Version 0.10
+2008-09-01  John Lapeyre  <lapeyre@physics.arizona.edu>
+
+	* added separable(state)
+	* braketp (ketp, brap, square_matp were added last revision)
+	* add some error detection
+	* add zip distribution form
+        * found a few ther QC computer algebra packages to look at.
+
+Version 0.09
+2008-08-28  John Lapeyre  <lapeyre@physics.arizona.edu>
+
+	* add concurrence, some docs for it.
+	* start bibliography, create bst, get links working
+	* remove some old code from qinf.mac, put it in optional_qinf.mac
+        * fixed documentation: quirks, inaccuracies, index
+	* add other functions. not documented.
+	* add (crude) install script
+
+Version 0.08
+2008-08-27  John Lapeyre  <lapeyre@physics.arizona.edu>
+
+	* fixed bugs in gates. added some documentation for them.
+	* added werner state, GHZ states
+
+Version 0.07
+2008-08-27  John Lapeyre  <lapeyre@physics.arizona.edu>
+
+	* added quantum gates, insert_operator, etc.
+
+Version 0.07
+2008-08-25  John Lapeyre  <lapeyre@physics.arizona.edu>
+
+	* corrected errors in manual and cleaned up entanglement
+	  swapping section.
+	* automated packaging more. Almost everything is built
+	  and packaged automatically.
+
+Version 0.06
+2008-08-25  John Lapeyre  <lapeyre@physics.arizona.edu>
+	* translate some functions to lisp, adding
+	  file qinf.lisp
+	* renamed tostate to tovect
+	* added tsallis and renyi entropy
+	* added floating point versions of entropys
+        * edited manual
+
+Version 0.05
+2008-08-18  John Lapeyre  <lapeyre@physics.arizona.edu>
+
+	* edits to manual, pdf and html
+	* reorganized pauli expansion functions
+	* added example of pauli expansion functions.
+
+Version 0.04
+2008-08-18  John Lapeyre  <lapeyre@physics.arizona.edu>
+
+	* create passable html version of manual
+	* add pdf table of contents/index links.
+	* other work on manual
+
+Version 0.03
+2008-08-16  John Lapeyre  <lapeyre@physics.arizona.edu>
+
+	* much work on manual
+	* add ptracen function and regression test
+	* add matcols function
+	* convert figure to pdf so it builds with pdflatex
+	* changed directory structure
+
+Version 0.02
+2008-08-12  John Lapeyre  <lapeyre@physics.arizona.edu>
+
+	* reformatted to remove hanging parentheses
+	* started documentation in qinf.tex
+
+Version 0.01
+2008-08-11  John Lapeyre  <lapeyre@physics.arizona.edu>
+	* initial release
