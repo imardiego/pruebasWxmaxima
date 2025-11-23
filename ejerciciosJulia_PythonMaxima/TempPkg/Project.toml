@@ -1,0 +1,4 @@
+name = "TempPkg"
+uuid = "dd629d32-582d-478d-a517-7a74a2d94d7a"
+version = "0.1.0"
+authors = ["imardiego <imardiego@gmail.com>"]
