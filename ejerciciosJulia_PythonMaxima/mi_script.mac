@@ -1,0 +1,19 @@
+print("========================================")$
+print("   MI SCRIPT DE MAXIMA DESDE LA TERMINAL")$
+print("========================================")$
+
+/* Definimos una función de ejemplo */
+f(x) := x^2 + 5*x + 6$
+
+/* Realizamos algunos cálculos */
+soluciones : solve(f(x) = 0, x)$
+derivada : diff(f(x), x)$
+
+/* Mostramos los resultados */
+print("La funcion es: f(x) =", f(x))$
+print("Las raices de f(x)=0 son:", soluciones)$
+print("La derivada es:", derivada)$
+print("========================================")$
+
+/* Finalizamos de forma limpia */
+quit()$
